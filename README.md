@@ -26,6 +26,8 @@ Open [localhost:5190](http://127.0.0.1:5190). The first launch creates four samp
   summary, decisions, and action items. Select which fields to apply and undo the accepted batch.
 - Accepted insights stay editable beneath the document; they are page properties, not automatically created tasks.
 - Link up to three notes as explicit AI context. Inspect the selected context and recent accepted actions.
+- **Next moves** connects accepted action items to an explicitly linked checklist, with selectable additions, persistent dismissals, and revision-guarded undo.
+- Durable workspace activity records note changes, accepted/undone insights, and next move outcomes.
 - Export a note and its insights to Markdown.
 - Workspace settings control inherited writing instructions and mock/live mode.
 
@@ -63,12 +65,35 @@ uses the Responses API, strict JSON schemas for structured suggestions, reasonin
 The current document is limited to its first 16,000 characters in recipe context. Up to three linked
 notes contribute 2,000 characters each. Continue also uses up to 8,000 characters before the cursor.
 The context inspector shows what was selected. Editing source text or linked context clears old proposals.
-Accepted-action memory lasts for the session; the notes and accepted page properties persist on disk.
+The component library’s prompt recipe memory still lasts for the session. Workspace events, accepted action-item evidence, and next move outcomes now persist on disk. This history is not automatically sent to the model.
+
+## Try workspace memory
+
+1. In **A little less friction**, include **A small launch checklist** under Perspective → Linked context.
+   Fresh workspaces already include this link; existing workspaces keep their original links.
+2. Use **Find the next steps**, accept the action items, and wait for **All changes saved**.
+3. Below the accepted insights, open **Next moves → Review task additions**.
+4. Select tasks and apply. The app appends them to the linked note’s first checklist as unchecked tasks.
+   Existing tasks and their checked states stay intact. Open that note to inspect the result.
+5. Use **Undo task additions** before making another edit to that checklist. A later edit disables undo.
+6. Expand **Recent workspace activity** to inspect persisted actions. Refresh to re-read another tab’s
+   activity. Dismissing a move suppresses that accepted batch for that target across restarts.
+
+The first anticipation policy is deterministic and local: it copies accepted action-item lines and
+removes duplicates by normalized text. It does not infer owners, deadlines, or arbitrary checklist
+rewrites. It requires an explicit link and a task-list block. Manual edits to action items do not count
+as AI acceptance. Review checks both source and target revisions; stale reviews fail without writing.
+No model calls run in the background. For a disposable workspace, set `FOLIO_DATA_DIR` to a separate
+directory before starting Vite (for example, `FOLIO_DATA_DIR=/tmp/folio-demo npm run dev`).
 
 ## Storage and current boundaries
 
-Notes are stored in **`.data/notes.json`**, outside Git, using one local server process. Keep a backup
-of this directory. Never run two app server processes against the same data directory. A note over
+Notes and workspace memory are stored together in **`.data/notes.json`**, outside Git, using one local server process. Keep a backup
+of this directory. Version 1 files migrate atomically to version 2 without changing note revisions
+or inventing past activity. History includes accepted action text and undo snapshots; treat the entire
+data file as private workspace content. Events are retained for the workspace lifetime; retention and
+compaction controls are future work. The last 100 mutation receipts make retries idempotent, including
+a lost response after a successful write. Older stale retries fail safely on revision checks. Never run two app server processes against the same data directory. A note over
 512 KB is rejected, leaving its open draft available to export. AI requests have a smaller 32 KB limit.
 
 Conflicting saves return a visible error; they do not silently replace another tab's newer revision.
@@ -77,9 +102,10 @@ until you use Retry save. Editing, navigating between notes, and saving normal n
 
 This is a **single-user local MVP**, not a hosted Notion replacement. Accounts, permissions, real-time
 collaboration, semantic/vector search, nested pages, persistent user preferences, file uploads, and
-cross-document AI transactions are future work. Related notes use shared tags and explicit links;
+general agent planning and multi-note transactions are future work. Related notes use shared tags and explicit links;
 search is literal text matching. AI extraction edits flat page properties; arbitrary block reordering
-and multi-page task creation are intentionally outside the first version.
+and arbitrary multi-page edits remain outside this version. The reviewed checklist addition is the
+first cross-note workflow, with note mutation and its outcome event committed together.
 
 Both `npm run dev` and `npm run preview` provide the local APIs. A static-only deployment does not.
 The server accepts only localhost/same-origin requests; add authentication and deployment-specific
@@ -100,7 +126,10 @@ aliases or symlinks are needed. The tarball includes the library's MIT license.
 - `src/editor.tsx`: Tiptap adapter, selection rewrites, cursor continuations.
 - `src/note-page.tsx`: page properties, prompt recipe inputs, review UI, explicit linked context.
 - `src/use-workspace.ts`: autosaving controlled note drafts without overwriting newer local edits.
-- `server/store.ts`: serialized disk persistence and optimistic revision checks.
+- `src/workspace-memory.ts`: typed semantic intents, events, next moves, and commands.
+- `src/next-moves.tsx`: task review, outcome controls, and durable activity UI.
+- `server/anticipation.ts`: deterministic next move policy with explicit-link provenance.
+- `server/store.ts`: atomic note/event persistence, migrations, idempotency, and revision checks.
 - `server/openai.ts`: server-only OpenAI adapter.
 - `server/notes-api.ts`: local note API.
 
@@ -115,3 +144,9 @@ no user-provided private notes were included.
 ![Folio workspace](docs/folio-workspace.png)
 
 ![Reviewing proposed page insights](docs/folio-review.png)
+
+The workspace memory screenshots use an isolated sample workspace in mock mode.
+
+![Reviewing a next move with selected task additions](docs/folio-next-move-review.jpg)
+
+![Applied tasks in the linked checklist](docs/folio-next-move-applied.jpg)
