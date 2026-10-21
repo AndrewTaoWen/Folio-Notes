@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { seedNotes } from '../src/seed.js';
+import { moveProposalId } from '../src/workspace-policy.js';
 import { workspaceMemory } from './anticipation.js';
 import { type NoteIntent, type MoveCommand, type WorkspaceEvent } from '../src/workspace-memory.js';
 import { paragraph, plainDocument, type DocNode, type Note, type NoteDraft } from '../src/model.js';
@@ -246,7 +247,7 @@ export function createNoteStore(directory: string) {
         const signature = createHash('sha256').update(JSON.stringify(command)).digest('hex');
         if (mutationId === undefined) throw new StoreError(400, 'A mutation ID is required.');
         const repeated = receipt(data, mutationId, signature);
-        if (repeated) return repeated;
+        if (repeated) return data.notes.find((note) => note.id === repeated.id) ?? repeated;
         if (command.type === 'undo') {
           const applied = data.events.find(
             (entry) => entry.id === command.eventId && entry.type === 'move.applied',
@@ -261,6 +262,9 @@ export function createNoteStore(directory: string) {
             type: 'move.undone',
             sourceEventId: applied.id,
             candidateId: applied.candidateId,
+            sourceNoteId: applied.sourceNoteId,
+            proposalId: applied.proposalId,
+            mutationId: mutationId as string,
           });
           remember(data, mutationId, signature, target);
           await persist(data);
@@ -284,6 +288,9 @@ export function createNoteStore(directory: string) {
           event(data, target, {
             type: 'move.dismissed',
             candidateId: move.id,
+            sourceNoteId: move.sourceId,
+            proposalId: moveProposalId(move),
+            mutationId: mutationId as string,
             sourceEventId: move.sourceEventId,
           });
         } else {
@@ -318,6 +325,9 @@ export function createNoteStore(directory: string) {
           event(data, target, {
             type: 'move.applied',
             candidateId: move.id,
+            sourceNoteId: move.sourceId,
+            proposalId: moveProposalId(move),
+            mutationId: mutationId as string,
             sourceEventId: move.sourceEventId,
             previousDoc,
           });

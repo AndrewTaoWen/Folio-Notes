@@ -1,5 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { AIChangePreview, useAISuggestion, useAIMemory } from '@ai-components/react';
+import {
+  AIChangePreview,
+  AIContextInspector,
+  inspectAIRequest,
+  useAISuggestion,
+  useAIMemory,
+} from '@ai-components/react';
 import { propertiesConfig } from './ai.js';
 import { NoteEditor } from './editor.js';
 import type { ReactNode } from 'react';
@@ -99,7 +105,10 @@ export function NotePage({
         a.tags.filter((tag) => note.tags.includes(tag)).length,
     )
     .slice(0, 3);
-  const inspected = suggestion.prepare({ action: 'extract', text: '', instruction }).context?._ai;
+  const inspected = inspectAIRequest(
+    suggestion.prepare({ action: 'extract', text: '', instruction }),
+    `note:${note.id}`,
+  );
   function toggleLink(id: string) {
     if (!note.linkedIds.includes(id) && note.linkedIds.length >= 3) return;
     update(note.id, (current) => ({
@@ -368,19 +377,10 @@ export function NotePage({
               </button>
             ))}
           </section>
-          <details className="context-inspector">
-            <summary>
-              Inspect AI context <span>↗</span>
-            </summary>
-            <pre>{JSON.stringify(inspected, null, 2)}</pre>
-            <p>
-              Linked note excerpts are limited to 2,000 characters each. Recent accepted page
-              properties are session memory.
-            </p>
-          </details>
+          <AIContextInspector inspection={inspected} label="Inspect AI context" />
           <p className="memory-footnote">
             {actions.length
-              ? `${actions.length} accepted action${actions.length === 1 ? '' : 's'} in this session`
+              ? `${actions.length} recorded action${actions.length === 1 ? '' : 's'} in this note’s context`
               : 'Nothing applied yet. You’re in control.'}
           </p>
         </aside>

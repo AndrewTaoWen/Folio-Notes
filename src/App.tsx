@@ -129,7 +129,11 @@ export default function App() {
     URL.revokeObjectURL(url);
   }
   return (
-    <AIProvider transport={mode === 'live' ? liveTransport : mockTransport} basePrompt={prompt}>
+    <AIProvider
+      memory={workspace.aiMemory}
+      transport={mode === 'live' ? liveTransport : mockTransport}
+      basePrompt={prompt}
+    >
       <div className="app-shell">
         {mobileNav && (
           <button
@@ -332,6 +336,8 @@ export default function App() {
                     error={workspace.memoryError}
                     disabled={workspace.moving || workspace.saveState !== 'All changes saved'}
                     perform={workspace.perform}
+                    execute={workspace.executeMove}
+                    validate={workspace.validateMove}
                     refresh={workspace.refreshMemory}
                     onOpen={open}
                   />
