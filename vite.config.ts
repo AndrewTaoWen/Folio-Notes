@@ -6,7 +6,7 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
   return {
     plugins: [
-      notesAPI(`${process.cwd()}/.data`),
+      notesAPI(env.FOLIO_DATA_DIR || `${process.cwd()}/.data`),
       localAIPlugin({ apiKey: env.OPENAI_API_KEY ?? '', model: env.OPENAI_MODEL || 'gpt-6-luna' }),
     ],
     test: { environment: 'jsdom', include: ['tests/**/*.test.ts*'], restoreMocks: true },

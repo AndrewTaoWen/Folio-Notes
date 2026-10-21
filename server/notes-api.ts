@@ -19,7 +19,13 @@ export function notesAPI(directory: string): Plugin {
     next: () => void,
   ) {
     const pathname = req.url?.split('?')[0] ?? '';
-    if (pathname !== '/api/notes' && !pathname.startsWith('/api/notes/')) return next();
+    if (
+      pathname !== '/api/notes' &&
+      !pathname.startsWith('/api/notes/') &&
+      pathname !== '/api/workspace/memory' &&
+      pathname !== '/api/workspace/commands'
+    )
+      return next();
     function send(status: number, body: unknown) {
       res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
       res.end(JSON.stringify(body));
@@ -32,6 +38,10 @@ export function notesAPI(directory: string): Plugin {
         send(403, { error: 'Only same-origin localhost requests are allowed.' });
         return;
       }
+      if (pathname === '/api/workspace/memory' && req.method === 'GET') {
+        send(200, await store.memory());
+        return;
+      }
       if (pathname === '/api/notes' && req.method === 'GET') {
         send(200, await store.list());
         return;
@@ -40,7 +50,10 @@ export function notesAPI(directory: string): Plugin {
         send(201, await store.create());
         return;
       }
-      if (req.method !== 'PUT') {
+      if (
+        !(req.method === 'PUT' && pathname.startsWith('/api/notes/')) &&
+        !(req.method === 'POST' && pathname === '/api/workspace/commands')
+      ) {
         send(405, { error: 'Method not allowed.' });
         return;
       }
@@ -59,17 +72,33 @@ export function notesAPI(directory: string): Plugin {
         }
         chunks.push(bytes);
       }
-      let input: { note?: unknown; revision?: unknown };
+      let input: {
+        note?: unknown;
+        revision?: unknown;
+        intents?: unknown;
+        mutationId?: unknown;
+        command?: unknown;
+      };
       try {
         input = JSON.parse(Buffer.concat(chunks).toString('utf8'));
       } catch {
         send(400, { error: 'Invalid JSON.' });
         return;
       }
-      send(
-        200,
-        await store.save(pathname.slice('/api/notes/'.length), input?.note, input?.revision),
-      );
+      if (pathname === '/api/workspace/commands') {
+        send(200, await store.command(input?.command, input?.mutationId));
+      } else {
+        send(
+          200,
+          await store.save(
+            pathname.slice('/api/notes/'.length),
+            input?.note,
+            input?.revision,
+            input?.intents,
+            input?.mutationId,
+          ),
+        );
+      }
     } catch (error) {
       send(error instanceof StoreError ? error.status : 500, {
         error:

@@ -1,12 +1,42 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { noteDraft, type Note } from './model.js';
+import type { MoveCommand, NoteIntent, WorkspaceMemory } from './workspace-memory.js';
 
 export function useWorkspace() {
   const [notes, setNotes] = useState<Note[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [saveState, setSaveState] = useState('All changes saved');
+  const [memory, setMemory] = useState<WorkspaceMemory>({ events: [], moves: [], undoable: [] });
+  const [memoryError, setMemoryError] = useState('');
+  const [moving, setMoving] = useState(false);
   const current = useRef<Note[]>([]);
+  const intents = useRef(new Map<string, NoteIntent[]>());
+  const pending = useRef(new Map<string, { body: string; version: number; intentCount: number }>());
+  const commandBusy = useRef(false);
+  const commandIds = useRef(new Map<string, string>());
+  const memoryRequest = useRef(0);
+  const refreshMemory = useCallback(async () => {
+    const request = ++memoryRequest.current;
+    try {
+      const response = await fetch('/api/workspace/memory');
+      if (!response.ok) throw new Error('Workspace memory could not be loaded.');
+      const data = await response.json();
+      if (
+        !Array.isArray(data.events) ||
+        !Array.isArray(data.moves) ||
+        !Array.isArray(data.undoable)
+      )
+        throw new Error('Invalid workspace memory response.');
+      if (mounted.current && request === memoryRequest.current) {
+        setMemory(data);
+        setMemoryError('');
+      }
+    } catch (cause) {
+      if (mounted.current && request === memoryRequest.current)
+        setMemoryError(cause instanceof Error ? cause.message : 'Memory is unavailable.');
+    }
+  }, []);
   const dirty = useRef(new Map<string, number>());
   const saving = useRef(false);
   const blocked = useRef(false);
@@ -16,22 +46,39 @@ export function useWorkspace() {
     if (mounted.current) setNotes(next);
   }, []);
   const flush = useCallback(async () => {
-    if (saving.current || blocked.current || !dirty.current.size) return;
+    if (saving.current || commandBusy.current || blocked.current || !dirty.current.size) return;
     saving.current = true;
     setSaveState('Saving…');
     try {
       for (const [id, version] of [...dirty.current]) {
         const note = current.current.find((entry) => entry.id === id);
         if (!note) continue;
+        let request = pending.current.get(id);
+        if (!request) {
+          const actions = intents.current.get(id) ?? [];
+          request = {
+            version,
+            intentCount: actions.length,
+            body: JSON.stringify({
+              note: noteDraft(note),
+              revision: note.revision,
+              intents: actions,
+              mutationId: crypto.randomUUID(),
+            }),
+          };
+          pending.current.set(id, request);
+        }
         const response = await fetch(`/api/notes/${encodeURIComponent(id)}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ note: noteDraft(note), revision: note.revision }),
+          body: request.body,
         });
         const data = await response.json();
         if (!response.ok)
           throw new Error(data.error || 'Unable to save. Your draft is still open.');
-        if (dirty.current.get(id) === version) dirty.current.delete(id);
+        pending.current.delete(id);
+        intents.current.set(id, (intents.current.get(id) ?? []).slice(request.intentCount));
+        if (dirty.current.get(id) === request.version) dirty.current.delete(id);
         publish(
           current.current.map((entry) =>
             entry.id === id
@@ -43,6 +90,7 @@ export function useWorkspace() {
       if (mounted.current) {
         setSaveState(dirty.current.size ? 'Unsaved changes' : 'All changes saved');
         setError('');
+        void refreshMemory();
       }
     } catch (cause) {
       blocked.current = true;
@@ -53,7 +101,7 @@ export function useWorkspace() {
     } finally {
       saving.current = false;
     }
-  }, [publish]);
+  }, [publish, refreshMemory]);
   useEffect(() => {
     mounted.current = true;
     const controller = new AbortController();
@@ -65,6 +113,7 @@ export function useWorkspace() {
         if (!controller.signal.aborted) {
           publish(data);
           setLoading(false);
+          void refreshMemory();
         }
       })
       .catch((cause) => {
@@ -89,13 +138,14 @@ export function useWorkspace() {
       clearInterval(timer);
       window.removeEventListener('beforeunload', beforeUnload);
     };
-  }, [publish, flush]);
+  }, [publish, flush, refreshMemory]);
   const update = useCallback(
-    (id: string, change: (note: Note) => Note) => {
+    (id: string, change: (note: Note) => Note, intent?: NoteIntent) => {
       const note = current.current.find((entry) => entry.id === id);
       if (!note) return;
       const next = change(note);
       if (JSON.stringify(note) === JSON.stringify(next)) return;
+      if (intent) intents.current.set(id, [...(intents.current.get(id) ?? []), intent]);
       dirty.current.set(id, (dirty.current.get(id) ?? 0) + 1);
       publish(current.current.map((entry) => (entry.id === id ? next : entry)));
       setSaveState('Unsaved changes');
@@ -108,6 +158,7 @@ export function useWorkspace() {
       if (!response.ok) throw new Error('Could not create a note.');
       const note = (await response.json()) as Note;
       publish([...current.current, note]);
+      void refreshMemory();
       return note;
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not create a note.');
@@ -119,5 +170,76 @@ export function useWorkspace() {
     setError('');
     void flush();
   }
-  return { notes, loading, error, saveState, update, create, retry };
+  async function perform(command: MoveCommand) {
+    if (commandBusy.current || saving.current || dirty.current.size || blocked.current) {
+      setMemoryError('Save your open changes before applying a next move.');
+      return false;
+    }
+    commandBusy.current = true;
+    setMoving(true);
+    const signature = JSON.stringify(command);
+    const mutationId = commandIds.current.get(signature) ?? crypto.randomUUID();
+    commandIds.current.set(signature, mutationId);
+    try {
+      const response = await fetch('/api/workspace/commands', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ command, mutationId }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Could not apply this move.');
+      commandIds.current.delete(signature);
+      // A delayed response must never replace typing that happened during the request.
+      if (dirty.current.has(result.id)) {
+        blocked.current = true;
+        setError(
+          'The checklist changed while you were typing. Export your draft before reloading.',
+        );
+        setSaveState('Draft not saved');
+      } else {
+        publish(current.current.map((note) => (note.id === result.id ? result : note)));
+      }
+      await refreshMemory();
+      return true;
+    } catch (cause) {
+      // The server may have committed before the connection failed. Reconcile saved notes
+      // alongside outcomes, while preserving any draft typed during the request.
+      try {
+        const response = await fetch('/api/notes');
+        if (response.ok) {
+          const saved: Note[] = await response.json();
+          if (Array.isArray(saved))
+            publish(
+              saved.map((note) =>
+                dirty.current.has(note.id)
+                  ? (current.current.find((draft) => draft.id === note.id) ?? note)
+                  : note,
+              ),
+            );
+        }
+      } catch {
+        /* Keep the open workspace usable if the server is still unreachable. */
+      }
+      await refreshMemory();
+      setMemoryError(cause instanceof Error ? cause.message : 'Could not apply this move.');
+      return false;
+    } finally {
+      commandBusy.current = false;
+      setMoving(false);
+    }
+  }
+  return {
+    notes,
+    loading,
+    error,
+    saveState,
+    update,
+    create,
+    retry,
+    memory,
+    memoryError,
+    moving,
+    refreshMemory,
+    perform,
+  };
 }

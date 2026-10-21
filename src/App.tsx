@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { AIProvider } from '@ai-components/react';
 import { mockTransport, liveTransport } from './ai.js';
 import { Icon } from './icons.js';
+import { NextMoves } from './next-moves.js';
 import { NotePage } from './note-page.js';
 import { documentText, exportMarkdown, type Note } from './model.js';
 import { useWorkspace } from './use-workspace.js';
@@ -324,6 +325,17 @@ export default function App() {
                 note={page}
                 notes={workspace.notes}
                 update={workspace.update}
+                nextMoves={
+                  <NextMoves
+                    noteId={page.id}
+                    memory={workspace.memory}
+                    error={workspace.memoryError}
+                    disabled={workspace.moving || workspace.saveState !== 'All changes saved'}
+                    perform={workspace.perform}
+                    refresh={workspace.refreshMemory}
+                    onOpen={open}
+                  />
+                }
                 mode={mode}
                 backend={backend.model}
                 showAssistant={showAssistant}

@@ -58,7 +58,7 @@ export function seedNotes(): Note[] {
         },
       ],
       ['Product', 'Meeting'],
-      ['product-principles'],
+      ['product-principles', 'launch'],
     ),
     note(
       'product-principles',
