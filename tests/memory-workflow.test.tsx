@@ -95,24 +95,16 @@ it('accepts insights, reviews selected next tasks, applies and undoes through th
   fireEvent.click(screen.getByRole('button', { name: 'Review 3 task additions' }));
   fireEvent.click(screen.getByRole('checkbox', { name: /Sam/ }));
   await act(async () => {
-    fireEvent.click(screen.getByRole('button', { name: 'Add selected tasks (2)' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Apply action (2)' }));
   });
-  await settle(
-    () =>
-      !!screen.queryByRole('button', { name: 'Undo task additions to A small launch checklist' }),
-  );
+  await settle(() => !!screen.queryByRole('button', { name: 'Undo action' }));
   const target = (await store.list()).find((note) => note.id === 'launch')!;
   expect(documentText(target.doc)).toContain('Maya');
   expect(documentText(target.doc)).not.toContain('Sam');
   await act(async () => {
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Undo task additions to A small launch checklist' }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Undo action' }));
   });
-  await settle(
-    () =>
-      !screen.queryByRole('button', { name: 'Undo task additions to A small launch checklist' }),
-  );
+  await settle(() => !screen.queryByRole('button', { name: 'Undo action' }));
   expect(
     documentText((await store.list()).find((note) => note.id === 'launch')!.doc),
   ).not.toContain('Maya');
@@ -157,7 +149,7 @@ it('reconciles a committed move after a lost response without showing stale chec
   await advance(1000);
   await settle(() => !!screen.queryByRole('button', { name: 'Review 3 task additions' }));
   fireEvent.click(screen.getByRole('button', { name: 'Review 3 task additions' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Add selected tasks (3)' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Apply action (3)' }));
   await settle(() => !!screen.queryByText('Lost command response'));
   const nav = screen.getByRole('navigation');
   fireEvent.click(within(nav).getByRole('button', { name: 'A small launch checklist' }));

@@ -1,12 +1,14 @@
+import { createAIMemory, AIActionRejectedError } from '@ai-components/react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { noteDraft, type Note } from './model.js';
-import type { MoveCommand, NoteIntent, WorkspaceMemory } from './workspace-memory.js';
+import type { MoveCommand, MoveReceipt, NoteIntent, WorkspaceMemory } from './workspace-memory.js';
 
 export function useWorkspace() {
   const [notes, setNotes] = useState<Note[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [saveState, setSaveState] = useState('All changes saved');
+  const [aiMemory] = useState(() => createAIMemory({ maxActions: 200 }));
   const [memory, setMemory] = useState<WorkspaceMemory>({ events: [], moves: [], undoable: [] });
   const [memoryError, setMemoryError] = useState('');
   const [moving, setMoving] = useState(false);
@@ -29,14 +31,16 @@ export function useWorkspace() {
       )
         throw new Error('Invalid workspace memory response.');
       if (mounted.current && request === memoryRequest.current) {
+        if (data.checkpoint) aiMemory.replaceSnapshot(data.checkpoint);
         setMemory(data);
         setMemoryError('');
+        return data as WorkspaceMemory;
       }
     } catch (cause) {
       if (mounted.current && request === memoryRequest.current)
         setMemoryError(cause instanceof Error ? cause.message : 'Memory is unavailable.');
     }
-  }, []);
+  }, [aiMemory]);
   const dirty = useRef(new Map<string, number>());
   const saving = useRef(false);
   const blocked = useRef(false);
@@ -170,16 +174,12 @@ export function useWorkspace() {
     setError('');
     void flush();
   }
-  async function perform(command: MoveCommand) {
+  async function executeMove(command: MoveCommand, mutationId: string): Promise<MoveReceipt> {
     if (commandBusy.current || saving.current || dirty.current.size || blocked.current) {
-      setMemoryError('Save your open changes before applying a next move.');
-      return false;
+      throw new AIActionRejectedError('Save your open changes before applying a next move.');
     }
     commandBusy.current = true;
     setMoving(true);
-    const signature = JSON.stringify(command);
-    const mutationId = commandIds.current.get(signature) ?? crypto.randomUUID();
-    commandIds.current.set(signature, mutationId);
     try {
       const response = await fetch('/api/workspace/commands', {
         method: 'POST',
@@ -187,8 +187,11 @@ export function useWorkspace() {
         body: JSON.stringify({ command, mutationId }),
       });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.error || 'Could not apply this move.');
-      commandIds.current.delete(signature);
+      if (!response.ok) {
+        if ([400, 403, 404, 409].includes(response.status))
+          throw new AIActionRejectedError(result.error || 'This move was rejected.');
+        throw new Error(result.error || 'Could not apply this move.');
+      }
       // A delayed response must never replace typing that happened during the request.
       if (dirty.current.has(result.id)) {
         blocked.current = true;
@@ -199,8 +202,11 @@ export function useWorkspace() {
       } else {
         publish(current.current.map((note) => (note.id === result.id ? result : note)));
       }
-      await refreshMemory();
-      return true;
+      const updated = await refreshMemory();
+      const event = updated?.events.find((entry) => entry.mutationId === mutationId);
+      if (!event)
+        throw new Error('The move may have completed. Refresh memory and retry to reconcile it.');
+      return { eventId: event.id, noteId: result.id, revision: result.revision };
     } catch (cause) {
       // The server may have committed before the connection failed. Reconcile saved notes
       // alongside outcomes, while preserving any draft typed during the request.
@@ -221,15 +227,35 @@ export function useWorkspace() {
         /* Keep the open workspace usable if the server is still unreachable. */
       }
       await refreshMemory();
-      setMemoryError(cause instanceof Error ? cause.message : 'Could not apply this move.');
-      return false;
+      throw cause;
     } finally {
       commandBusy.current = false;
       setMoving(false);
     }
   }
+  async function perform(command: MoveCommand) {
+    const signature = JSON.stringify(command);
+    const id = commandIds.current.get(signature) ?? crypto.randomUUID();
+    commandIds.current.set(signature, id);
+    try {
+      await executeMove(command, id);
+      commandIds.current.delete(signature);
+      return true;
+    } catch (cause) {
+      setMemoryError(cause instanceof Error ? cause.message : 'Could not apply this move.');
+      return false;
+    }
+  }
+  function validateMove() {
+    if (saving.current || commandBusy.current || dirty.current.size || blocked.current)
+      throw new AIActionRejectedError('Save your open changes before applying a next move.');
+  }
+
   return {
     notes,
+    aiMemory,
+    executeMove,
+    validateMove,
     loading,
     error,
     saveState,

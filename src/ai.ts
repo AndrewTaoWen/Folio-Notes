@@ -2,10 +2,10 @@ import {
   createFetchTransport,
   defineAIContext,
   fromContext,
-  fromAction,
   type AITransport,
   type AIConfig,
 } from '@ai-components/react';
+import { latestAcceptedInsight } from './workspace-policy.js';
 
 export const liveTransport = createFetchTransport('/api/ai', {
   async fetch(input, options) {
@@ -28,7 +28,7 @@ export const noteRecipe = defineAIContext({
   borrow: {
     document: fromContext('document'),
     linkedNotes: fromContext('linkedNotes'),
-    lastAccepted: fromAction('note.properties.accepted'),
+    lastAccepted: latestAcceptedInsight,
   },
   instructions:
     'Use only the supplied note and deliberately linked references. Keep facts, owners, and dates grounded. Never invent commitments. For action items and decisions, use one item per line. Keep the existing title unless a better title is clearly useful.',
@@ -50,11 +50,6 @@ export function propertiesConfig(context: Record<string, unknown>): AIConfig {
   return {
     recipe: noteRecipe,
     context,
-    remember: {
-      key: 'acceptedProperties',
-      action: 'note.properties.accepted',
-      source: 'note-review',
-    },
   };
 }
 
