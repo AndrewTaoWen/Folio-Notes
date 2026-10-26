@@ -65,7 +65,7 @@ uses the Responses API, strict JSON schemas for structured suggestions, reasonin
 The current document is limited to its first 16,000 characters in recipe context. Up to three linked
 notes contribute 2,000 characters each. Continue also uses up to 8,000 characters before the cursor.
 The context inspector shows what was selected. Editing source text or linked context clears old proposals.
-The component library’s prompt recipe memory still lasts for the session. Workspace events, accepted action-item evidence, and next move outcomes now persist on disk. This history is not automatically sent to the model.
+Prompt recipes now read the approved projection of persisted workspace events and latest accepted insights. This history is selected explicitly and is not automatically sent wholesale to the model.
 
 ## Try workspace memory
 
@@ -150,3 +150,23 @@ The workspace memory screenshots use an isolated sample workspace in mock mode.
 ![Reviewing a next move with selected task additions](docs/folio-next-move-review.jpg)
 
 ![Applied tasks in the linked checklist](docs/folio-next-move-applied.jpg)
+
+## Shared framework migration
+
+Folio now consumes the same packaged `useAIAction`, `AIActionReview`, `AIContextInspector`,
+`defineAIPolicy`, and `evaluateAIPolicies` APIs as the support workflow in the separate playground.
+Its checklist policy lives in `src/workspace-policy.ts`; no note schema is hardcoded in the library.
+The server projects approved facts and outcomes into an `AIMemorySnapshot`, and the client replaces
+that projection atomically without changing provider identity. Prompt recipes can borrow persisted
+accepted insights after reload. The **Why this suggestion?** inspector shows the selected action,
+source revision, linked checklist tasks, and completed-candidate evidence; the writing inspector
+shows only context selected for its recipe.
+
+The domain ledger and mutation receipts remain in Folio's atomic server store. They are authoritative
+for stale-review rejection, recovery, and persisted undo. Library memory is their context projection,
+not a second competing database. Recent projected history is bounded, while the latest accepted
+insight remains available as a scoped fact. No extra model calls or browser-stored API keys are added.
+
+![Shared-library review in Folio](docs/folio-shared-review.jpg)
+
+![Selected additions in the linked checklist](docs/folio-shared-result.jpg)

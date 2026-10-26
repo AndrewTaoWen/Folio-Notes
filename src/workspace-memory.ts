@@ -1,3 +1,5 @@
+import type { AIPrediction } from '@ai-components/react/prediction';
+import type { AIMemorySnapshot } from '@ai-components/react/memory';
 import { documentText, type DocNode } from './model.js';
 
 /** Semantic actions travel with the note save that made them durable. */
@@ -21,9 +23,12 @@ export interface WorkspaceEvent {
   candidateId?: string;
   sourceEventId?: string;
   previousDoc?: DocNode;
+  sourceNoteId?: string;
+  proposalId?: string;
+  mutationId?: string;
 }
 
-export interface NextMove {
+export type NextMoveBase = {
   id: string;
   sourceId: string;
   sourceTitle: string;
@@ -33,9 +38,16 @@ export interface NextMove {
   targetTitle: string;
   targetRevision: number;
   additions: string[];
+};
+
+export type FolioStep = { text: string; candidate: NextMoveBase };
+export interface NextMove extends NextMoveBase {
+  prediction?: AIPrediction<FolioStep>;
 }
+export type MoveReceipt = { eventId: string; noteId: string; revision: number };
 
 export interface WorkspaceMemory {
+  checkpoint?: AIMemorySnapshot;
   events: Omit<WorkspaceEvent, 'previousDoc'>[];
   moves: NextMove[];
   undoable: { eventId: string; noteId: string; title: string }[];

@@ -41,7 +41,7 @@ it('migrates v1 notes atomically without inventing acceptance or changing notes'
   notes[0].revision = 23;
   await writeFile(path.join(directory, 'notes.json'), JSON.stringify({ version: 1, notes }));
   expect(await store.list()).toEqual(notes);
-  expect(await store.memory()).toEqual({ events: [], moves: [], undoable: [] });
+  expect(await store.memory()).toMatchObject({ events: [], moves: [], undoable: [] });
   expect(JSON.parse(await readFile(path.join(directory, 'notes.json'), 'utf8')).version).toBe(2);
 });
 it('records ordinary edits without treating them as AI acceptance', async () => {
@@ -172,4 +172,20 @@ it('refuses undo after a newer manual edit and hides full undo documents from me
   await expect(
     store.command({ type: 'undo', eventId: memory.undoable[0].eventId }, 'undo'),
   ).rejects.toMatchObject({ status: 409 });
+});
+
+it('replays a committed move without replacing newer target edits in the returned view', async () => {
+  const { store } = await setup();
+  await accept(store);
+  const command = apply((await store.memory()).moves[0]);
+  const saved = await store.command(command, 'original-command');
+  const edited = await store.save(
+    saved.id,
+    { ...noteDraft(saved), properties: { ...saved.properties, title: 'Newer target work' } },
+    saved.revision,
+  );
+  expect(await store.command(command, 'original-command')).toEqual(edited);
+  expect(
+    (await store.memory()).events.filter((event) => event.type === 'move.applied'),
+  ).toHaveLength(1);
 });
