@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import App from '../src/App.js';
 import { seedNotes } from '../src/seed.js';
@@ -20,6 +20,8 @@ function backend() {
         url: String(input),
         body: options?.body ? JSON.parse(options.body as string) : undefined,
       });
+      if (input === '/api/workspace/memory')
+        return Response.json({ events: [], moves: [], undoable: [] });
       if (input.endsWith('/status'))
         return Response.json({ configured: false, model: 'gpt-6-luna' });
       if (!options?.method || options.method === 'GET') return Response.json(notes);
@@ -67,7 +69,11 @@ it('loads the real editor, searches notes, and creates a new page', async () => 
     target: { value: 'research' },
   });
   expect(screen.getByRole('button', { name: 'Things worth paying attention to' })).toBeTruthy();
-  expect(screen.queryByRole('button', { name: 'A small launch checklist' })).toBeNull();
+  expect(
+    within(screen.getByRole('navigation')).queryByRole('button', {
+      name: 'A small launch checklist',
+    }),
+  ).toBeNull();
   await act(async () => {
     fireEvent.click(screen.getByRole('button', { name: 'New note' }));
   });

@@ -566,12 +566,12 @@ kbd {
   list-style: none;
   padding-left: 0;
 }
-.tiptap li[data-type='taskItem'] {
+.tiptap li[data-checked] {
   display: flex;
   gap: 9px;
   padding: 0;
 }
-.tiptap li[data-type='taskItem'] > div {
+.tiptap li[data-checked] > div {
   flex: 1;
 }
 .tiptap li[data-checked='true'] > div {
@@ -1293,4 +1293,107 @@ kbd {
   .tiptap {
     font-size: 14px;
   }
+}
+
+/* Persistent workspace suggestions share the document's quiet visual rhythm. */
+.next-moves {
+  margin-top: 36px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border, #e4e7df);
+}
+.next-moves h2 {
+  font-size: 22px;
+  margin: 10px 0;
+}
+.next-move-card {
+  background: #f2f6ef;
+  border: 1px solid #dbe5d5;
+  padding: 18px;
+  border-radius: 12px;
+  margin: 16px 0;
+}
+.next-move-card h3 {
+  margin: 0 0 10px;
+  font-size: 17px;
+  line-height: 1.4;
+}
+.next-move-card p {
+  font-size: 13px;
+  line-height: 1.6;
+}
+.text-link {
+  border: 0;
+  padding: 0;
+  background: none;
+  color: #3f624a;
+  text-decoration: underline;
+  cursor: pointer;
+  font: inherit;
+}
+.next-moves .secondary {
+  background: white;
+  border: 1px solid #ccd8c9;
+  color: #35543f;
+  border-radius: 7px;
+  padding: 8px 12px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+}
+.next-moves button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.dismiss-move {
+  display: block;
+  margin-top: 12px;
+  font-size: 12px;
+}
+.next-move-card fieldset {
+  border: 0;
+  padding: 0;
+  margin: 16px 0;
+}
+.next-move-card legend {
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+.next-move-card fieldset label {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 12px 0;
+}
+.next-move-card input {
+  margin-top: 3px;
+  accent-color: #42634a;
+}
+.move-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.workspace-history {
+  font-size: 12px;
+  margin: 20px 0;
+}
+.workspace-history summary {
+  cursor: pointer;
+}
+.workspace-history ol {
+  list-style: none;
+  padding: 0;
+}
+.workspace-history li {
+  border-top: 1px solid #e5e9e2;
+  padding: 10px 0;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.workspace-history small {
+  display: block;
+  color: #747e73;
 }

@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { AIChangePreview, useAISuggestion, useAIMemory } from '@ai-components/react';
 import { propertiesConfig } from './ai.js';
 import { NoteEditor } from './editor.js';
+import type { ReactNode } from 'react';
+import type { NoteIntent } from './workspace-memory.js';
 import { Icon } from './icons.js';
 import { documentText, type Note } from './model.js';
 
@@ -18,6 +20,7 @@ export function NotePage({
   note,
   notes,
   update,
+  nextMoves,
   mode,
   backend,
   showAssistant,
@@ -26,7 +29,8 @@ export function NotePage({
 }: {
   note: Note;
   notes: Note[];
-  update(id: string, change: (note: Note) => Note): void;
+  update(id: string, change: (note: Note) => Note, intent?: NoteIntent): void;
+  nextMoves: ReactNode;
   mode: string;
   backend: string;
   showAssistant: boolean;
@@ -66,11 +70,26 @@ export function NotePage({
     ],
   );
   const ai = useMemo(() => propertiesConfig(context), [context]);
+  const insightAction = useRef<NoteIntent['type'] | undefined>(undefined);
   const suggestion = useAISuggestion({
     value: note.properties,
     fields,
     ai,
-    onValueChange: (properties) => update(note.id, (current) => ({ ...current, properties })),
+    onValueChange: (properties) =>
+      update(
+        note.id,
+        (current) => ({ ...current, properties }),
+        insightAction.current === 'insights.accepted'
+          ? {
+              type: 'insights.accepted',
+              ...(properties.actions !== note.properties.actions
+                ? { actions: properties.actions }
+                : {}),
+            }
+          : insightAction.current === 'insights.undone'
+            ? { type: 'insights.undone' }
+            : undefined,
+      ),
   });
   const related = notes
     .filter((entry) => entry.id !== note.id && !note.linkedIds.includes(entry.id))
@@ -189,6 +208,7 @@ export function NotePage({
               )}
             </section>
           )}
+          {nextMoves}
           <footer className="document-footer">
             <span>{text.trim() ? text.trim().split(/\s+/).length : 0} words</span>
             <span>Personal workspace · stored on this computer</span>
@@ -256,9 +276,23 @@ export function NotePage({
             <AIChangePreview
               changes={suggestion.changes}
               sources={suggestion.sources}
-              onAccept={suggestion.accept}
+              onAccept={(selected) => {
+                insightAction.current = 'insights.accepted';
+                try {
+                  return suggestion.accept(selected);
+                } finally {
+                  insightAction.current = undefined;
+                }
+              }}
               onDismiss={suggestion.dismiss}
-              onUndo={suggestion.undo}
+              onUndo={() => {
+                insightAction.current = 'insights.undone';
+                try {
+                  return suggestion.undo();
+                } finally {
+                  insightAction.current = undefined;
+                }
+              }}
               canUndo={suggestion.canUndo}
             />
             <p role="status" className="inline-error">
